@@ -17,6 +17,10 @@ Mt=5.97e24 #masse terre [kg]
 mu=G*Mt #[m3/s2]
 Rt = 6371000 #Rayon de la terre [m]
 
+# Coords MTP
+lat_mtp = 43.637
+long_mtp = 3.843
+
 #Paramètre ellipse
 
 hp=200000
