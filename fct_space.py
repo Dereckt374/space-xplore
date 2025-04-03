@@ -1,5 +1,5 @@
 from math import cos, sin, sqrt, radians, log10
-from skyfield.api import EarthSatellite, load, wgs84, N, S, E, W
+from skyfield.api import EarthSatellite, load, wgs84, N, S, E, W, Topos
 import numpy as np
 import math 
 from math import degrees
@@ -204,6 +204,22 @@ def satellite_pass(Earthsatellite, start_date = datetime.now(), period_offset_da
     df['Date(FR)'] = pd.to_datetime(df['Date(FR)'], dayfirst = True)
     return(df.set_index('Date(FR)'))
 
+def est_visible(tle_line1 : str, tle_line2 : str, lat : float, lon : float, alt : float, date : datetime):
+    ts = load.timescale()
+    satellite = TLE_to_sat('\n'.join([tle_line1, tle_line2]))
+    t = ts.utc(date.year, date.month, date.day, date.hour, date.minute, date.second)
+
+    observateur = Topos(latitude_degrees=lat, longitude_degrees=lon, elevation_m=alt)
+
+    # Calcul de la position
+    difference = satellite - observateur
+    topocentric = difference.at(t)
+    alt, az, distance = topocentric.altaz()
+
+    return alt.degrees
+
+############################# DATE FORMAT #############################
+
 def from_CEST_to_UTC(date):
     from pytz import timezone
     return(timezone('Europe/Paris').localize(date)).astimezone(tz=timezone('UTC'))
@@ -211,3 +227,104 @@ def from_CEST_to_UTC(date):
 def from_UTC_to_CEST(date):
     from pytz import timezone
     return(timezone('UTC').localize(date)).astimezone(tz=timezone('Europe/Paris'))
+
+############################## TLE GENERATION ##############################
+
+
+def mean_motion_from_sma(sma_km):
+    """Calculer la Mean Motion (révolution par jour) à partir du Semi-Major Axis (km)"""
+    # Mean Motion en rad/s
+    mean_motion_rad_s = math.sqrt(mu / (sma_km**3))
+
+    # Conversion en révolutions par jour (1 tour = 2 * pi rad)
+    mean_motion_rev_day = mean_motion_rad_s * 86400 / (2 * math.pi)
+
+    return mean_motion_rev_day
+
+
+def format_tle_element(element, width, decimals=0):
+    """Format un élément TLE avec largeur et décimales"""
+    return f"{element:0{width}.{decimals}f}"
+
+
+def create_tle_line_1(
+    satellite_number,
+    classification,
+    launch_year,
+    launch_number,
+    launch_piece,
+    epoch_year,
+    epoch_day,
+):
+    """Créer la première ligne TLE"""
+    line_1 = f"1 {satellite_number:05}{classification} {launch_year:02}{launch_number:03}{launch_piece} {epoch_year:02}{format_tle_element(epoch_day, 12, 8)}  .00000000  00000-0  00000-0 0  0000"
+    return line_1
+
+
+def create_tle_line_2(
+    satellite_number,
+    inclination,
+    raan,
+    eccentricity,
+    arg_perigee,
+    mean_anomaly,
+    mean_motion,
+):
+    """Créer la deuxième ligne TLE"""
+    eccentricity_formatted = f"{int(eccentricity * 1e7):07d}"
+    line_2 = f"2 {satellite_number:05} {format_tle_element(inclination, 8, 4)} {format_tle_element(raan, 8, 4)} {eccentricity_formatted} {format_tle_element(arg_perigee, 8, 4)} {format_tle_element(mean_anomaly, 8, 4)} {format_tle_element(mean_motion, 11, 8)}00000"
+    return line_2
+
+
+def date_to_epoch_days(dt):
+    """Convertir une date en jour fractionnaire pour TLE"""
+    year = dt.year
+    # Si année après 2000, ajuster pour le TLE
+    epoch_year = year % 100
+    # Jour de l'année + fraction du jour
+    epoch_day = (
+        dt.timetuple().tm_yday + dt.hour / 24 + dt.minute / 1440 + dt.second / 86400
+    )
+    return epoch_year, epoch_day
+
+
+def generate_tle(raan, inclination, arg_perigee, sma, eccentricity, dt):
+    """Générer un TLE approximatif à partir de paramètres orbitaux"""
+
+    # Satellite et lancement fictif (cubesat 3U)
+    satellite_number = 99999
+    classification = "U"  # Unclassified
+    launch_year = 23  # 2023
+    launch_number = 99  # Lancement fictif
+    launch_piece = "A"  # Fragment A
+
+    # Calculer la Mean Motion (révolutions par jour) à partir du SMA
+    mean_motion = mean_motion_from_sma(sma)
+
+    # Date et conversion en jour TLE (epoch)
+    epoch_year, epoch_day = date_to_epoch_days(dt)
+
+    # Anomalie moyenne fictive (peut être dérivée avec plus de données)
+    mean_anomaly = 0.0  # Supposons 0 pour simplifier
+
+    # Créer les lignes TLE
+    line_1 = create_tle_line_1(
+        satellite_number,
+        classification,
+        launch_year,
+        launch_number,
+        launch_piece,
+        epoch_year,
+        epoch_day,
+    )
+    line_2 = create_tle_line_2(
+        satellite_number,
+        inclination,
+        raan,
+        eccentricity,
+        arg_perigee,
+        mean_anomaly,
+        mean_motion,
+    )
+
+    return line_1, line_2
