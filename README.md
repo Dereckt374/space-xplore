@@ -15,3 +15,11 @@ All miscellaneous calculation from in orbit satellite
 ## API
 
 All API 
+
+
+## Requierements
+
+> Update requierments : `pip freeze > requirements.txt`
+
+> Read requierments : `pip install -r requirements.txt`
+
